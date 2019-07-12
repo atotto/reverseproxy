@@ -1,6 +1,7 @@
 package reverseproxy
 
 import (
+	"context"
 	"io"
 	"log"
 	"net"
@@ -321,7 +322,7 @@ func (p *ReverseProxy) ProxyHTTPS(rw http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	proxyConn, err := net.Dial("tcp", req.URL.Host)
+	proxyConn, err := p.dial(req.Context(), "tcp", req.URL.Host)
 	if err != nil {
 		p.logf("http: proxy error: %v", err)
 		return
@@ -365,6 +366,18 @@ func (p *ReverseProxy) ProxyHTTPS(rw http.ResponseWriter, req *http.Request) {
 	io.Copy(proxyConn, clientConn)
 	proxyConn.Close()
 	clientConn.Close()
+}
+
+var zeroDialer net.Dialer
+
+func (p *ReverseProxy) dial(ctx context.Context, network, addr string) (net.Conn, error) {
+	if transport, ok := p.Transport.(*http.Transport); ok {
+		if transport != nil && transport.DialContext != nil {
+			return transport.DialContext(ctx, network, addr)
+		}
+	}
+
+	return zeroDialer.DialContext(ctx, network, addr)
 }
 
 func (p *ReverseProxy) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
